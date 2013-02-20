@@ -1,0 +1,7 @@
+This is the CAN-FIX Arduino Library project.
+
+Installation:
+
+To install copy the cf_test directory into your sketchbook directory for your
+Arduino.  See the Arduino preferences menu for the sketchbook location for
+your installation.
