@@ -32,6 +32,8 @@ CAN::CAN(byte pin)
   digitalWrite(ss_pin, HIGH);
 }
 
+/* Writes data to the MCP2515 starting at reg.  Writes the
+   number of bytes in buff given by count */
 void CAN::write(byte reg, byte *buff, byte count)
 {
   byte n;
@@ -44,6 +46,8 @@ void CAN::write(byte reg, byte *buff, byte count)
   digitalWrite(ss_pin, HIGH);
 }
 
+/* Reads from the MCP2515 starting at reg, writes
+   the bytes that are read into buff */
 void CAN::read(byte reg, byte *buff, byte count)
 {
   byte n;
@@ -55,6 +59,48 @@ void CAN::read(byte reg, byte *buff, byte count)
   }  
   digitalWrite(ss_pin, HIGH);
 }
+
+/* These two functions are to convert back and forth between
+   the actual Frame ID and the buffers that are suitable for
+   the MCP2515.  The regs buffer should be a four byte buffer
+   and it represents the SIDH, SIDL, EID8 and EID0 buffers
+   respectively.
+   
+   This function takes the registers and returns a CanFrame
+   with the id and the eid members set accordingly. */
+CanFrame CAN::reg2frame(byte *regs)
+{
+  CanFrame frame;
+  
+  if(regs[1] & 0x08) {   // Extended Identifier
+    frame.id = ((unsigned long)regs[0] << 21);         //SIDH
+    frame.id |= ((unsigned long)regs[1] & 0xE0)<<13;   //SIDL
+    frame.id |= ((unsigned long)regs[1] & 0x03)<<16;   //SIDL
+    frame.id |= ((unsigned long)regs[2]<<8) | (unsigned long)regs[3]; //EID8  EID0
+    frame.eid = 0x01;
+  } else {
+    frame.id = (regs[0]<<3) | (regs[1]>>5);
+    frame.eid = 0x00;
+  }
+  return frame;
+}
+
+/* This function requires that frame.id and frame.eid
+   both be set properly.  It will fill in 'regs' with
+   the four registers. */
+void CAN::frame2reg(CanFrame frame, byte *regs)
+{
+  if(frame.eid) {
+    regs[3] = frame.id;        //EID0
+    regs[2] = frame.id >>8;    //EID8
+    regs[1] = ((frame.id>>16) & 0x03) | ((frame.id>>13) & 0xE0) | 0x08;  //SIDL
+    regs[0] = frame.id>>21;    //SIDH
+  } else {
+    regs[1] = frame.id<<5;     //SIDL
+    regs[0] = frame.id>>3;     //SIDH
+  }
+}
+
 
 void CAN::sendCommand(byte command)
 {
@@ -119,58 +165,41 @@ byte CAN::getRxStatus(void)
 
 CanFrame CAN::readFrame(byte rxb)
 {
-  byte sidl, sidh, eid0, eid8, n;
+  byte n;
+  byte regs[4];
   CanFrame frame;
   digitalWrite(ss_pin, LOW);
   SPI.transfer(CMD_READRXB | (rxb<<2));
-  sidh = SPI.transfer(0x00); //SIDH
-  sidl = SPI.transfer(0x00); //SIDL
-  eid8 = SPI.transfer(0x00); //EID8
-  eid0 = SPI.transfer(0x00); //EID0
+  regs[0] = SPI.transfer(0x00); //SIDH
+  regs[1] = SPI.transfer(0x00); //SIDL
+  regs[2] = SPI.transfer(0x00); //EID8
+  regs[3] = SPI.transfer(0x00); //EID0
+  frame = reg2frame(regs);
   frame.length = SPI.transfer(0x00);  //DLC
   for(n=0; n<frame.length; n++) {
     frame.data[n] = SPI.transfer(0x00);
   }
   digitalWrite(ss_pin, HIGH);
-  if(sidl & 0x08) {   // Extended Identifier
-    sidl &= 0xE3;     // Clear the EXIDE bit
-    frame.id = ((unsigned long)sidh << 21);
-    frame.id |= ((unsigned long)sidl & 0xE0)<<13;
-    frame.id |= ((unsigned long)sidl & 0x03)<<16;
-    frame.id |= ((unsigned long)eid8<<8) | (unsigned long)eid0;
-    frame.eid = 0x01;
-  } else {
-    frame.id = (sidh<<3) | (sidl>>5);
-    frame.eid = 0x00;
-  }
   return frame;
 }
 
 byte CAN::writeFrame(CanFrame frame)
 {
   byte result, i, j;
-  byte eid0, eid8, sidl, sidh;
+  byte regs[4];
   byte ctrl[] = {REG_TXB0CTRL, REG_TXB1CTRL, REG_TXB2CTRL};
 
   for(i=0; i<3; i++) {  //Loop through all three TX buffers
      read(ctrl[i], &result, 1); //Read the TXBxCTRL register
      if(!(result & TXREQ)) {    //If the TXREQ bit is not set then...
-       if(frame.eid) {
-         eid0 = frame.id;        //Assemble the buffers
-         eid8 = frame.id >>8;
-         sidl = ((frame.id>>16) & 0x03) | ((frame.id>>13) & 0xE0) | 0x08;
-         sidh = frame.id>>21;
-       } else {
-         sidl = frame.id<<5;
-         sidh = frame.id>>3;
-       }
+       frame2reg(frame, regs);
          
        digitalWrite(ss_pin, LOW);
        SPI.transfer(CMD_WRITETXB | (i<<1));   //Write the buffers
-       SPI.transfer(sidh); //SIDH
-       SPI.transfer(sidl); //SIDL
-       SPI.transfer(eid8); //EID8
-       SPI.transfer(eid0); //EID0
+       SPI.transfer(regs[0]); //SIDH
+       SPI.transfer(regs[1]); //SIDL
+       SPI.transfer(regs[2]); //EID8
+       SPI.transfer(regs[3]); //EID0
        SPI.transfer(frame.length);  //DLC
        for(j=0; j<frame.length; j++) {
           SPI.transfer(frame.data[j]);

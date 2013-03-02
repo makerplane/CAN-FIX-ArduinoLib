@@ -114,6 +114,8 @@ private:
   byte ss_pin;
   void write(byte reg, byte *buff, byte count);
   void read(byte reg, byte *buff, byte count);
+  CanFrame reg2frame(byte *regs);
+  void frame2reg(CanFrame, byte *regs);
 public:
   CAN(byte pin);
   void sendCommand(byte command);
