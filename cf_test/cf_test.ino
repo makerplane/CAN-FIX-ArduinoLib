@@ -19,12 +19,20 @@
 #define CAN_MHZ 20
 #include "canfix.h"
 
+#include <Serial.h>
+
+CanFix *cf;
+
 void setup()
 {
-  ;
+  Serial.begin(115200);
+  cf = new CanFix(10, 0xB0);
 }
 
 void loop()
 {
-  ;
+  /* Event Loop function */
+  cf->exec();
+//  delay(1000);
+//  Serial.println(cf->getNodeNumber(), HEX);
 }

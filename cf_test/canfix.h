@@ -21,12 +21,22 @@
 
 #include "can.h"
 
+#define EE_NODE 0x00
+#define EE_BITRATE 0x01
+
 class CanFix 
 {
 private:
-  byte node;
+  byte deviceid, fw_version;
+  unsigned long model;
+  CAN *can;
 public:
-  CanFix(byte pin);
+  CanFix(byte pin, byte device);
+  void exec(void);
+  byte getNodeNumber(void);
+  int getBitRate(void);
+  void setBitRate(int bitrate);
+
 };
 
 #endif  //__CANFIX_H
