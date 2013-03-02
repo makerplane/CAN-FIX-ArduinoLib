@@ -212,3 +212,32 @@ byte CAN::writeFrame(CanFrame frame)
   return -1;  //All the buffers are full
 }
 
+/* Writes the filter that is in the id and eid of frame.
+   If the filter index is out of range it returns -1
+   or zero on sucess */
+int CAN::writeFilter(CanFrame frame, byte filter)
+{
+  byte start;
+  byte buff[4];
+  
+  if(filter > 5) {
+    return -1;
+  }
+  if(filter < 3) start = filter << 2;
+  else           start = (filter - 3) <<2 | 0x10;
+  frame2reg(frame, buff);
+  write(start, buff, 4);
+}
+
+int CAN::writeMask(CanFrame frame, byte mask)
+{
+  byte start;
+  byte buff[4];
+  
+  if(mask > 1) {
+    return -1;
+  }
+  start = mask<<2 | 0x20;
+  frame2reg(frame, buff);
+  write(start, buff, 4);
+}

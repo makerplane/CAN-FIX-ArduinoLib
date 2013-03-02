@@ -125,6 +125,8 @@ public:
   byte getRxStatus(void);
   CanFrame readFrame(byte rxb);
   byte writeFrame(CanFrame frame);
+  int writeFilter(CanFrame frame, byte filter);
+  int writeMask(CanFrame frame, byte mask);
 };
 
 #endif /* __CAN_H */
