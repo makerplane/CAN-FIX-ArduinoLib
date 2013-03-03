@@ -99,7 +99,9 @@ void CanFix::exec(void)
           return;
         case NSM_NODE_SET: // Node Set Message
           if(frame.data[2] != 0x00) {
-            EEPROM.write(EE_NODE, frame.data[2]);
+            if(EEPROM.read(EE_NODE) != frame.data[2]) {
+                EEPROM.write(EE_NODE, frame.data[2]);
+            }
             // Gotta do this agin because we just changed it
             rframe.id = 0x700 + getNodeNumber();
             rframe.data[2] = 0x00;
@@ -139,16 +141,21 @@ int CanFix::getBitRate(void)
   /* If we get here the value in the EEPROM is bad.
    We'll set a default. */
   setBitRate(125);
+  return 125;
 }
 
 /* This sets the bitrate in the EEPROM.  It does not change the
  actual bitrate in the controller */
 void CanFix::setBitRate(int bitrate)
 {
-  if(bitrate==125)  EEPROM.write(EE_BITRATE, 1);
-  if(bitrate==250)  EEPROM.write(EE_BITRATE, 2);
-  if(bitrate==500)  EEPROM.write(EE_BITRATE, 5);
-  if(bitrate==1000) EEPROM.write(EE_BITRATE, 10);
+  byte br = 0;
+  if(bitrate==125)  br = 1;
+  if(bitrate==250)  br = 2;
+  if(bitrate==500)  br = 5;
+  if(bitrate==1000) br = 10;
+  if(EEPROM.read(EE_BITRATE) != br) {
+    EEPROM.write(EE_BITRATE, br);
+  }
 }
 
 byte CanFix::getNodeNumber(void)
