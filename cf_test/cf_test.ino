@@ -27,6 +27,8 @@ void setup()
 {
   Serial.begin(115200);
   cf = new CanFix(10, 0xB0);
+  cf->setModel(0x123456);
+  cf->setFwVersion(0x01);
 }
 
 void loop()

@@ -25,10 +25,12 @@
 CanFix::CanFix(byte pin, byte device)
 {
   byte bitrate;
-
+  
   deviceid = device;
-  model = 0;
+  model = 0L;
+  //model = 0x123456L;
   fw_version = 0;
+  
   can = new CAN(pin);
   can->sendCommand(CMD_RESET);
   can->setBitRate(bitrate = getBitRate());
@@ -43,16 +45,67 @@ void CanFix::exec(void)
 {
   byte rxstat;
   CanFrame frame;
+  CanFrame rframe; //Response frame
   
+  rframe.eid = 0x00;
   rxstat = can->getRxStatus();
   if(rxstat & 0x40) {
     frame = can->readFrame(0);
-    Serial.print("RX0 Received Frame, ID = ");
-    Serial.println(frame.id, HEX);
   } else if(rxstat & 0x80) {
     frame = can->readFrame(1);
   } else {
     return;
+  }
+  if(frame.id >= 0x700) {
+    // If the first data byte matches our node id or 0
+    if(frame.data[0] == getNodeNumber() || frame.data[0]==0) {
+      // This prepares a generic response
+      rframe.data[0] = frame.id & 0xFF;
+      rframe.data[1] = frame.data[1];
+      rframe.id = 0x700 + getNodeNumber();
+              
+      switch(frame.data[1]) {
+        case NSM_ID: // Node Identify Message
+          rframe.data[2] = 0x01;
+          rframe.data[3] = deviceid;
+          rframe.data[4] = fw_version;
+          rframe.data[5] = (byte)model;
+          rframe.data[6] = (byte)(model >> 8);
+          rframe.data[7] = (byte)(model >> 16);
+          rframe.length = 8;
+          break;
+        case NSM_BITRATE:
+          Serial.print("Set Bitrate to ");
+          Serial.println(frame.data[2]);
+          return;
+        case NSM_NODE_SET: // Node Set Message
+          if(frame.data[2] != 0x00) {
+            EEPROM.write(EE_NODE, frame.data[2]);
+            // Gotta do this agin because we just changed it
+            rframe.id = 0x700 + getNodeNumber();
+            rframe.data[2] = 0x00;
+          } else {
+            rframe.data[2] = 0x01;
+          }
+          rframe.length = 2;
+          break;
+        case NSM_DISABLE:
+        case NSM_ENABLE:
+        case NSM_REPORT:
+        case NSM_STATUS:
+        case NSM_FIRMWARE:
+        case NSM_TWOWAY:
+        case NSM_CONFSET:
+        case NSM_CONFGET:
+          return;
+        default:
+          return;
+      }
+      can->writeFrame(rframe);
+          
+      Serial.print("Got Message From Node ");
+      Serial.println(frame.id & 0x00FF, HEX);
+    }
   }
 }
 
@@ -87,4 +140,13 @@ byte CanFix::getNodeNumber(void)
   if(x == 0x00) x = deviceid;
 }
 
+void CanFix::setModel(unsigned long m)
+{
+  model = m;
+}
+
+void CanFix::setFwVersion(byte v)
+{
+  fw_version = v;
+}
 

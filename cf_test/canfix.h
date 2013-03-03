@@ -24,6 +24,19 @@
 #define EE_NODE 0x00
 #define EE_BITRATE 0x01
 
+// Node Specific Message Control Codes
+#define NSM_ID       0
+#define NSM_BITRATE  1
+#define NSM_NODE_SET 2
+#define NSM_DISABLE  3
+#define NSM_ENABLE   4
+#define NSM_REPORT   5
+#define NSM_STATUS   6
+#define NSM_FIRMWARE 7
+#define NSM_TWOWAY   8
+#define NSM_CONFSET  9
+#define NSM_CONFGET  10
+
 class CanFix 
 {
 private:
@@ -36,6 +49,8 @@ public:
   byte getNodeNumber(void);
   int getBitRate(void);
   void setBitRate(int bitrate);
+  void setModel(unsigned long m);
+  void setFwVersion(byte v);
 
 };
 
