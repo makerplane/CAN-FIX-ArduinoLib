@@ -44,6 +44,7 @@ CanFix::CanFix(byte pin, byte device)
 void CanFix::exec(void)
 {
   byte rxstat;
+  int x;
   CanFrame frame;
   CanFrame rframe; //Response frame
   
@@ -75,8 +76,26 @@ void CanFix::exec(void)
           rframe.length = 8;
           break;
         case NSM_BITRATE:
+          if(frame.data[2] == 1) {
+            x = 125;
+          } else if(frame.data[2] ==2) {
+            x = 250;
+          } else if(frame.data[2] == 3) {
+            x = 500;
+          } else if(frame.data[2] == 4) {
+            x = 1000;
+          } else {
+            rframe.data[2] = 0x01;
+            rframe.length = 3;
+            can->writeFrame(rframe);
+            return;
+          }
+          setBitRate(x);
+          can->setMode(MODE_CONFIG);
+          can->setBitRate(x);
+          can->setMode(MODE_NORMAL);
           Serial.print("Set Bitrate to ");
-          Serial.println(frame.data[2]);
+          Serial.println(x);
           return;
         case NSM_NODE_SET: // Node Set Message
           if(frame.data[2] != 0x00) {

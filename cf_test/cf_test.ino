@@ -33,8 +33,25 @@ void setup()
 
 void loop()
 {
+  static unsigned long lasttime[4], now;
   /* Event Loop function */
   cf->exec();
+  now = millis();
+  if(now - lasttime[0] > 500) {
+    lasttime[0] = now;
+  }
+  if(now - lasttime[1] > 1000) {
+    lasttime[1] = now;
+  }
+  if(now - lasttime[2] > 2000) {
+    lasttime[2] = now;
+  }
+  if(now - lasttime[3] > 5000) {
+    lasttime[3] = now;
+  }
+  
+    
+    
 //  delay(1000);
 //  Serial.println(cf->getNodeNumber(), HEX);
 }
