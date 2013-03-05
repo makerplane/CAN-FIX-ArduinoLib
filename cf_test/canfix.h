@@ -51,6 +51,7 @@ public:
   void setBitRate(int bitrate);
   void setModel(unsigned long m);
   void setFwVersion(byte v);
+  void sendStatus(unsigned int type, byte *data, byte length);
 
 };
 

@@ -29,11 +29,14 @@ void setup()
   cf = new CanFix(10, 0xB0);
   cf->setModel(0x123456);
   cf->setFwVersion(0x01);
+  cf->sendStatus(0x00, NULL, 0);
 }
 
 void loop()
 {
   static unsigned long lasttime[4], now;
+  static byte count;
+  byte buff[8];
   /* Event Loop function */
   cf->exec();
   now = millis();
@@ -48,6 +51,12 @@ void loop()
   }
   if(now - lasttime[3] > 5000) {
     lasttime[3] = now;
+    cf->sendStatus(0x00, NULL, 0);
+    if((++count % 10) == 0) {
+      buff[0]=count;
+      buff[1]=buff[0]*2;
+      cf->sendStatus(4567, buff, 2);
+    }
   }
   
     

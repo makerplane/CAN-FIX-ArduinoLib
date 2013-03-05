@@ -43,7 +43,7 @@ CanFix::CanFix(byte pin, byte device)
  issues and fire events if certain parameters are received. */
 void CanFix::exec(void)
 {
-  byte rxstat;
+  byte rxstat, index, offset, result;
   int x;
   CanFrame frame;
   CanFrame rframe; //Response frame
@@ -110,10 +110,38 @@ void CanFix::exec(void)
           }
           rframe.length = 2;
           break;
+        /* We use a bitmask in the EEPROM to determine whether or not a
+           parameter is disabled.  A 0 in the bit location means enabled
+           and a 1 means disabled. */
         case NSM_DISABLE:
         case NSM_ENABLE:
+          x = frame.data[2];
+          x |= frame.data[3] << 8;
+          index = x/8;
+          offset = x%8;
+          rframe.length = 3;
+          if(x<256 || x>1759) {
+            rframe.data[2]=0x01;
+            break;
+          }
+          rframe.data[2]=0x00;
+          result = EEPROM.read(index);
+          if(frame.data[1]==NSM_DISABLE) {
+            if(!(result & (0x01<<offset))) {  //If the bit is clear
+              result |= 0x01<<offset;
+              EEPROM.write(index, result);
+              Serial.print("Disable Parameter ");
+            }
+          } else {
+            if(bitRead(result,offset)) { //If the bit is set
+              bitClear(result,offset);
+              //'result &= ~(0x01<<offset);  //Clear the bit
+              EEPROM.write(index, result);
+              Serial.print("Enable Parameter ");
+            }
+          }
+          break;
         case NSM_REPORT:
-        case NSM_STATUS:
         case NSM_FIRMWARE:
         case NSM_TWOWAY:
         case NSM_CONFSET:
@@ -138,6 +166,11 @@ int CanFix::getBitRate(void)
   if(bitrate == 2) return 250;
   if(bitrate == 5) return 500;
   if(bitrate == 10) return 1000;
+  //TODO: This is an indicator that the EEPROM has been erased.  We
+  //      should probably set it all to zero.
+  //if(bitrate == 0xFF) {
+  //  ;
+  //}
   /* If we get here the value in the EEPROM is bad.
    We'll set a default. */
   setBitRate(125);
@@ -176,3 +209,22 @@ void CanFix::setFwVersion(byte v)
   fw_version = v;
 }
 
+/* Sends a Node Status Information Message.  type is the parameter type,
+   *data is the buffer of up to 4 bytes and length is the number of 
+   bytes in *data */
+void CanFix::sendStatus(unsigned int type, byte *data, byte length)
+{
+  CanFrame frame;
+  byte n;
+  frame.id = 0x700 + getNodeNumber();
+  frame.eid = 0x00;
+  frame.data[0] = 0;
+  frame.data[1] = NSM_STATUS;
+  frame.data[2] = type;
+  frame.data[3] = type >> 8;
+  for(n=0; n<length; n++) {
+    frame.data[4+n] = data[n];
+  }
+  frame.length = length + 4;
+  can->writeFrame(frame);
+}
