@@ -19,6 +19,29 @@
 #include "canfix.h"
 #include <EEPROM.h>
 
+void CFParameter::setMetaData(byte meta)
+{
+  fcb &= 0x0F;
+  fcb |= (meta << 4);
+}
+
+byte CFParameter::getMetaData(void)
+{
+  return fcb >> 4;
+}
+
+void CFParameter::setFlags(byte flags)
+{
+  fcb &= 0xF0;
+  fcb |= (flags & 0x0F);
+}
+
+byte CFParameter::getFlags(void)
+{
+  return fcb & 0x0F;
+}
+
+
 /* Constructor for the CanFix Class.  pin is the slave select
  pin that the CAN controller should use.  device is the 
  device type that will be used. */
@@ -30,6 +53,13 @@ CanFix::CanFix(byte pin, byte device)
   model = 0L;
   //model = 0x123456L;
   fw_version = 0;
+  report_callback = NULL;
+  twoway_callback = NULL;
+  config_callback = NULL;
+  query_callback = NULL;
+  param_callback = NULL;
+  alarm_callback = NULL;
+  stream_callback = NULL;
   
   can = new CAN(pin);
   can->sendCommand(CMD_RESET);
@@ -37,10 +67,31 @@ CanFix::CanFix(byte pin, byte device)
   can->setMode(MODE_NORMAL);
 }
 
+/* This is a wrapper for the CAN.writeFrame() function. It attempts
+   to write the frame into the transmit buffer.  If the transmit 
+   buffer is full and mode == MODE_BLOCK then it will spin wait
+   until the frame is written and return 0.  If mode == MODE_NONBLOCK
+   it will attempt to send the frame and if it is successful it will
+   return 0 otherwise it will return non-zero */
+byte CanFix::writeFrame(CanFrame frame, byte mode)
+{
+  byte result;
+  
+  while(1) {
+    result = can->writeFrame(frame);
+    if(result == 0) {
+      return 0;
+    } else {
+      if(mode) return 1;
+    }
+  }
+}
+
+
 /* The exec() function is the heart and soul of this library.  The
  application should call this function in each loop.  It will
  receive the data from the CAN Bus, deal with mandatory protocol
- issues and fire events if certain parameters are received. */
+ issues and fire events if certain frames are received. */
 void CanFix::exec(void)
 {
   byte rxstat, index, offset, result;
@@ -57,7 +108,7 @@ void CanFix::exec(void)
   } else {
     return;
   }
-  if(frame.id >= 0x700) {
+  if(frame.id >= 0x700) { /* Node Specific Message */
     // If the first data byte matches our node id or 0
     if(frame.data[0] == getNodeNumber() || frame.data[0]==0) {
       // This prepares a generic response
@@ -94,11 +145,9 @@ void CanFix::exec(void)
           can->setMode(MODE_CONFIG);
           can->setBitRate(x);
           can->setMode(MODE_NORMAL);
-          Serial.print("Set Bitrate to ");
-          Serial.println(x);
           return;
         case NSM_NODE_SET: // Node Set Message
-          if(frame.data[2] != 0x00) {
+          if(frame.data[2] != 0x00) { // Doesn't respond to broadcast
             if(EEPROM.read(EE_NODE) != frame.data[2]) {
                 EEPROM.write(EE_NODE, frame.data[2]);
             }
@@ -127,33 +176,61 @@ void CanFix::exec(void)
           rframe.data[2]=0x00;
           result = EEPROM.read(index);
           if(frame.data[1]==NSM_DISABLE) {
-            if(!(result & (0x01<<offset))) {  //If the bit is clear
-              result |= 0x01<<offset;
+            if(!bitRead(result, offset)) {  //If the bit is clear
+              bitSet(result, offset);
               EEPROM.write(index, result);
-              Serial.print("Disable Parameter ");
             }
-          } else {
-            if(bitRead(result,offset)) { //If the bit is set
+          } else {  //Enable command - doesn't respond to broadcast
+            if(bitRead(result,offset) && frame.data[0]!=0x00) { //If the bit is set
               bitClear(result,offset);
-              //'result &= ~(0x01<<offset);  //Clear the bit
               EEPROM.write(index, result);
-              Serial.print("Enable Parameter ");
             }
           }
           break;
         case NSM_REPORT:
-        case NSM_FIRMWARE:
+          if(report_callback) report_callback();
+          return;
+        case NSM_FIRMWARE: //Not implemented yet
+          return;
         case NSM_TWOWAY:
+          if(twoway_callback && frame.data[0]!=0x00) {
+            if(twoway_callback(frame.data[2], *((word *)(&frame.data[3]))) == 0) {
+              rframe.data[2]=0x00;
+              rframe.length = 3;
+              break;
+            }
+          }
+          return;
         case NSM_CONFSET:
+          if(frame.data[0]!=0x00) {
+            if(config_callback) {
+              rframe.data[2] = config_callback(*((word *)(&frame.data[2])), &frame.data[4]);
+            } else {
+              rframe.data[2] = 1;
+            }
+            rframe.length = 3;
+            break;
+          }
+          return;
         case NSM_CONFGET:
+          if(frame.data[0]!=0x00) {
+            if(query_callback) {
+              rframe.data[2] = query_callback(*((word *)(&frame.data[2])), &rframe.data[3]);
+            } else {
+              rframe.data[2] = 1;
+            }
+            if(rframe.data[2]==0) { /* Send Success with data */
+              rframe.length = 7;
+            } else {
+              rframe.length = 3; /* Just send the error */
+            }
+            break;
+          }
           return;
         default:
           return;
       }
       can->writeFrame(rframe);
-          
-      Serial.print("Got Message From Node ");
-      Serial.println(frame.id & 0x00FF, HEX);
     }
   }
 }
@@ -212,7 +289,7 @@ void CanFix::setFwVersion(byte v)
 /* Sends a Node Status Information Message.  type is the parameter type,
    *data is the buffer of up to 4 bytes and length is the number of 
    bytes in *data */
-void CanFix::sendStatus(unsigned int type, byte *data, byte length)
+void CanFix::sendStatus(word type, byte *data, byte length)
 {
   CanFrame frame;
   byte n;
@@ -226,5 +303,40 @@ void CanFix::sendStatus(unsigned int type, byte *data, byte length)
     frame.data[4+n] = data[n];
   }
   frame.length = length + 4;
-  can->writeFrame(frame);
+  writeFrame(frame, MODE_BLOCK);
+}
+
+void CanFix::set_report_callback(void (*f)(void))
+{
+  report_callback = f;
+}
+
+void CanFix::set_twoway_callback(byte (*f)(byte, word))
+{
+  twoway_callback = f;
+}
+
+void CanFix::set_config_callback(byte (*f)(word, byte *))
+{
+  config_callback = f;
+}
+
+void CanFix::set_query_callback(byte (*f)(word, byte *))
+{
+  query_callback = f;
+}
+
+void CanFix::set_param_callback(void (*f)(CFParameter))
+{
+  param_callback = f;
+}
+
+void CanFix::set_alarm_callback(void (*f)(word, byte*))
+{
+  alarm_callback = f;
+}
+
+void CanFix::set_stream_callback(void (*f)(byte, byte *, byte))
+{
+  stream_callback = f;
 }

@@ -37,21 +37,68 @@
 #define NSM_CONFSET  9
 #define NSM_CONFGET  10
 
+#define MODE_BLOCK    0
+#define MODE_NONBLOCK 1
+
+#define FCB_ANNUNC    0x01;
+#define FCB_QUALITY   0x02;
+#define FCB_FAIL      0x04;
+
+class CFParameter
+{
+  public:
+    word type;
+    byte node;
+    byte index;
+    byte fcb;
+    byte data[5];
+    byte length;
+    void setMetaData(byte meta);
+    byte getMetaData(void);
+    void setFlags(byte flags);
+    byte getFlags(void);
+};
+    
 class CanFix 
 {
 private:
-  byte deviceid, fw_version;
-  unsigned long model;
-  CAN *can;
+  byte deviceid, fw_version;  //Node identification information
+  unsigned long model;  //Model number for node identification
+  CAN *can;             // Pointer to can object
+  byte writeFrame(CanFrame frame, byte mode);
+  //Function Pointers for Callbacks
+  void (*report_callback)(void);
+  byte (*twoway_callback)(byte, word);
+  byte (*config_callback)(word, byte *);
+  byte (*query_callback)(word, byte *);
+  void (*param_callback)(CFParameter);
+  void (*alarm_callback)(word, byte*);
+  void (*stream_callback)(byte, byte *, byte);
 public:
   CanFix(byte pin, byte device);
+  // Main Event Loop - Well sorta loop
   void exec(void);
+  // Property Functions
   byte getNodeNumber(void);
   int getBitRate(void);
   void setBitRate(int bitrate);
   void setModel(unsigned long m);
   void setFwVersion(byte v);
-  void sendStatus(unsigned int type, byte *data, byte length);
+  
+  // Data Transfer Functions
+  void sendStatus(word type, byte *data, byte length);
+  void sendParam(CFParameter);
+  void sendAlarm(word type, byte *data, byte length);
+  void sendStream(byte channel, byte *data, byte length);
+
+  // Callback function assignments
+  void set_report_callback(void (*report_callback)(void));
+  void set_twoway_callback(byte (*twoway_callback)(byte, word));
+  void set_config_callback(byte (*config_callback)(word, byte *));
+  void set_query_callback(byte (*query_callback)(word, byte *));
+  void set_param_callback(void (*param_callback)(CFParameter));
+  void set_alarm_callback(void (*alarm_callback)(word, byte*));
+  void set_stream_callback(void (*stream_callback)(byte, byte *, byte));
 
 };
 

@@ -209,7 +209,7 @@ byte CAN::writeFrame(CanFrame frame)
        return 0;
      }
   }   
-  return -1;  //All the buffers are full
+  return 1;  //All the buffers are full
 }
 
 /* Writes the filter that is in the id and eid of frame.
