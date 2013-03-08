@@ -72,7 +72,7 @@ private:
   byte (*config_callback)(word, byte *);
   byte (*query_callback)(word, byte *);
   void (*param_callback)(CFParameter);
-  void (*alarm_callback)(word, byte*);
+  void (*alarm_callback)(byte, word, byte*);
   void (*stream_callback)(byte, byte *, byte);
 public:
   CanFix(byte pin, byte device);
@@ -87,7 +87,7 @@ public:
   
   // Data Transfer Functions
   void sendStatus(word type, byte *data, byte length);
-  void sendParam(CFParameter);
+  void sendParam(CFParameter p);
   void sendAlarm(word type, byte *data, byte length);
   void sendStream(byte channel, byte *data, byte length);
 
@@ -97,9 +97,11 @@ public:
   void set_config_callback(byte (*config_callback)(word, byte *));
   void set_query_callback(byte (*query_callback)(word, byte *));
   void set_param_callback(void (*param_callback)(CFParameter));
-  void set_alarm_callback(void (*alarm_callback)(word, byte*));
+  void set_alarm_callback(void (*alarm_callback)(byte, word, byte*));
   void set_stream_callback(void (*stream_callback)(byte, byte *, byte));
 
+  // Utility Functions
+  byte checkParameterEnable(word id);
 };
 
 #endif  //__CANFIX_H

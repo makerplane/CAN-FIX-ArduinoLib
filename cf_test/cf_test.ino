@@ -29,9 +29,28 @@ byte twoway_callback(byte channel, word type);
 byte config_callback(word key, byte *data);
 byte query_callback(word key, byte *data);
 void param_callback(CFParameter p);
-void alarm_callback(word type, byte *data, byte length);
+void alarm_callback(byte node, word type, byte *data, byte length);
 void stream_callback(byte channel, byte *data, byte length);
 
+
+void sendStaticTemperature(int x) {
+  float temp;
+  CFParameter p;
+  
+  temp = (((float)x * (500.0/1024.0)) - 32.0) * (5.0/9.0);
+  
+  if(cf->checkParameterEnable(0x407)) { /* Check that it's enabled */
+    p.type = 0x407;
+    p.index = 0;
+    p.fcb = 0x00;
+    x = temp*100;
+    p.data[0] = x;
+    p.data[1] = x>>8;
+    p.length = 2;
+  
+    cf->sendParam(p);
+  }
+}
 
 void setup()
 {
@@ -55,15 +74,18 @@ void loop()
 {
   static unsigned long lasttime[TIMER_COUNT], now;
   static byte count, n;
+  int x;
   byte buff[8];
   /* Event Loop function */
   cf->exec();
   now = millis();
-  if(now - lasttime[0] > 500) {
+  if(now - lasttime[0] > 250) {
     lasttime[0] = now;
   }
   if(now - lasttime[1] > 1000) {
     lasttime[1] = now;
+    x = analogRead(0); /* Temperature Sensor on pin 0 */
+    sendStaticTemperature(x);
   }
   if(now - lasttime[2] > 2000) {
     lasttime[2] = now;
@@ -143,12 +165,27 @@ byte query_callback(word key, byte *data)
 
 void param_callback(CFParameter p)
 {
-  ;
+  byte n;
+  Serial.print("Parameter ");
+  Serial.print(p.type, HEX);
+  Serial.print(" From Node ");
+  Serial.print(p.node, HEX);
+  Serial.print(" Index ");
+  Serial.print(p.index, HEX);
+  Serial.print(" Function Code ");
+  Serial.println(p.fcb, HEX);
+  for(n=0; n<p.length; n++) {
+     Serial.print(" ");
+     Serial.print(p.data[n], HEX);
+  }
 }
 
-void alarm_callback(word type, byte *data)
+void alarm_callback(byte node, word type, byte *data)
 {
-  ;
+  Serial.print("Alarm from Node ");
+  Serial.print(node, HEX);
+  Serial.print(", Type = ");
+  Serial.println(type, HEX);
 }
 
 void stream_callback(byte channel, byte *data, byte length)

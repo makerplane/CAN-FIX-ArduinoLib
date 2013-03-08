@@ -94,10 +94,11 @@ byte CanFix::writeFrame(CanFrame frame, byte mode)
  issues and fire events if certain frames are received. */
 void CanFix::exec(void)
 {
-  byte rxstat, index, offset, result;
+  byte rxstat, index, offset, result, n;
   int x;
   CanFrame frame;
   CanFrame rframe; //Response frame
+  CFParameter par;
   
   rframe.eid = 0x00;
   rxstat = can->getRxStatus();
@@ -108,7 +109,25 @@ void CanFix::exec(void)
   } else {
     return;
   }
-  if(frame.id >= 0x700) { /* Node Specific Message */
+  if(frame.id == 0x00) { /* Ignore ID 0 */
+    ;
+  } else if(frame.id < 256) { /* Node Alarms */
+    if(alarm_callback) {
+      alarm_callback(frame.id, *((word *)(&frame.data[0])), &frame.data[2]);
+    }
+  } else if(frame.id < 0x6E0) { /* Parameters */
+    if(param_callback) {
+      par.type = frame.id;
+      par.node = frame.data[0];
+      par.index = frame.data[1];
+      par.fcb = frame.data[2];
+      par.length = frame.length - 3;
+      for(n = 0; n<par.length; n++) par.data[n] = frame.data[3+n];
+      param_callback(par);
+    }
+  } else if(frame.id < 0x700) { /* Communication Channel */
+    ; /* Not implemented at the moment */
+  } else if(frame.id < 0x800) { /* Node Specific Message */
     // If the first data byte matches our node id or 0
     if(frame.data[0] == getNodeNumber() || frame.data[0]==0) {
       // This prepares a generic response
@@ -306,6 +325,25 @@ void CanFix::sendStatus(word type, byte *data, byte length)
   writeFrame(frame, MODE_BLOCK);
 }
 
+void CanFix::sendParam(CFParameter p)
+{
+  byte n;
+  CanFrame frame;
+  frame.id = p.type;
+  frame.eid = 0;
+  frame.data[0] = getNodeNumber();
+  frame.data[1] = p.index;
+  frame.data[2] = p.fcb;
+  frame.length = p.length + 3;
+  for(n = 0; n<p.length && n<5; n++) frame.data[3+n] = p.data[n];
+  writeFrame(frame, MODE_BLOCK);
+}
+
+void CanFix::sendAlarm(word type, byte *data, byte length)
+{
+  ;
+}
+
 void CanFix::set_report_callback(void (*f)(void))
 {
   report_callback = f;
@@ -331,7 +369,7 @@ void CanFix::set_param_callback(void (*f)(CFParameter))
   param_callback = f;
 }
 
-void CanFix::set_alarm_callback(void (*f)(word, byte*))
+void CanFix::set_alarm_callback(void (*f)(byte, word, byte*))
 {
   alarm_callback = f;
 }
@@ -339,4 +377,17 @@ void CanFix::set_alarm_callback(void (*f)(word, byte*))
 void CanFix::set_stream_callback(void (*f)(byte, byte *, byte))
 {
   stream_callback = f;
+}
+
+/* Returns non-zero if the parameter is enabled */
+byte CanFix::checkParameterEnable(word id) {
+    byte index, offset, result;
+    index = id / 8;
+    offset = id % 8;
+    result = EEPROM.read(index);
+    if(bitRead(result, offset)) {
+      return 0;
+    } else {
+      return 1;
+    }
 }
