@@ -1,6 +1,7 @@
 ****************************************
 MakerPlane CAN-FIX Arduino Library
 ****************************************
+This is an experimental system, and is not suited for primary or backup flight/engine instrumentation or navigation. Use at your own risk.
 
 This is a library to interface Arduino devices to a CAN-FIX network.
 
